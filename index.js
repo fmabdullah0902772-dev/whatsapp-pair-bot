@@ -1,19 +1,24 @@
 const express = require("express");
+const path = require("path");
+const pino = require("pino");
+
 const {
     default: makeWASocket,
     useMultiFileAuthState,
     DisconnectReason
 } = require("@whiskeysockets/baileys");
 
-const pino = require("pino");
 const app = express();
 
 app.use(express.json());
 
+// 🌐 Serve frontend
+app.use(express.static(path.join(__dirname, "web")));
+
 let sock;
 let latestCode = null;
 
-// 🔥 WhatsApp Connection Function
+// 🔥 WhatsApp Start Function
 async function startBot(number) {
     const { state, saveCreds } = await useMultiFileAuthState("./session");
 
@@ -23,17 +28,12 @@ async function startBot(number) {
         logger: pino({ level: "silent" })
     });
 
-    // 🔥 Pairing code generate event
+    // connection update
     sock.ev.on("connection.update", async (update) => {
-        const { connection, lastDisconnect, pairingCode } = update;
-
-        if (pairingCode) {
-            latestCode = pairingCode;
-            console.log("PAIRING CODE:", pairingCode);
-        }
+        const { connection, lastDisconnect } = update;
 
         if (connection === "open") {
-            console.log("✅ WhatsApp Connected!");
+            console.log("✅ WhatsApp Connected");
         }
 
         if (connection === "close") {
@@ -49,19 +49,19 @@ async function startBot(number) {
 
     sock.ev.on("creds.update", saveCreds);
 
-    // 👇 Request pairing code
+    // 📲 pairing code request
     setTimeout(async () => {
         try {
             let code = await sock.requestPairingCode(number);
-            console.log("📲 YOUR PAIR CODE:", code);
             latestCode = code;
+            console.log("PAIR CODE:", code);
         } catch (e) {
-            console.log("Error generating code:", e.message);
+            console.log("Error:", e.message);
         }
     }, 3000);
 }
 
-// 🌐 API ROUTE (frontend yahan call karega)
+// 🌐 API: start pairing
 app.post("/pair", async (req, res) => {
     const { number } = req.body;
 
@@ -73,23 +73,23 @@ app.post("/pair", async (req, res) => {
 
     res.json({
         status: "success",
-        message: "Pairing started",
-        number: number
+        message: "Pairing started"
     });
 });
 
-// 📡 Get latest code
+// 📡 API: get code
 app.get("/code", (req, res) => {
     res.json({
         code: latestCode
     });
 });
 
-// 🌐 Home
+// 🌐 Homepage (frontend)
 app.get("/", (req, res) => {
-    res.send("WhatsApp Pair Bot Running 🚀");
+    res.sendFile(path.join(__dirname, "web", "index.html"));
 });
 
+// 🚀 start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log("Server running on port " + PORT);
